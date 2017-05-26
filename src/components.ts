@@ -2,25 +2,43 @@
     //Ignore if the browser supports HTML imports out of the box
     if('import' in document.createElement('link')) { return; }
 
-    const processImports = (doc:HTMLDocument|DocumentFragment) => {
-        let importLinks = doc.querySelectorAll('link[rel="import"]');
-        Array.prototype.forEach.call(importLinks, (importLink) => {
-            fetch(importLink.getAttribute('href'))
-                .then((response) => {
-                    return response.text();
+    //Processes a single link element, making sure to include nested links.
+    // Does not properly handle improper import practices.
+    const load = (link) => {
+        return new Promise((resolve, reject) => {
+            let url = link.getAttribute('href');
+
+            fetch(url).then((response) => {
+                return response.text();
+            }).then((text) => {
+                let fragment = document.createRange().createContextualFragment(text);
+                importLinks(fragment).then((a)=> {
+                    link.appendChild(fragment);
+                    resolve(fragment);
                 })
-                .then((text) => {
-                    return new Promise((resolve, reject) => {
-                        let linkFragment = document.createRange().createContextualFragment(text);
-                        processImports(linkFragment);
-                        resolve(linkFragment)
-                    });                    
-                })
-                .then((fragment) => {
-                    importLink.appendChild(fragment);
-                });
+            });
+        })
+    }
+
+    //Given a set of links, processess  all of them, before moving on.
+    const processImports = (links: NodeList|Array<any>) => {
+        let pending = [];
+        Array.prototype.forEach.call(links, (link) => {
+            pending.push(load(link));
+        });
+
+        return Promise.all(pending);
+    };
+
+    //Given a document, or fragment, find all imports and process them.
+    const importLinks = (parentFragment: HTMLDocument | DocumentFragment) => {
+        return new Promise((resolve,reject)=> {
+            processImports(parentFragment.querySelectorAll('link[rel="import"]'))
+            .then((fragments) => {
+                resolve(fragments);
+            })
         });
     }
 
-    processImports(document);
+    importLinks(document);
 })();
